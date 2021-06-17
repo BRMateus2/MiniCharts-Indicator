@@ -57,7 +57,7 @@ INPUT bool cShowPrice = true; // Show price in Mini Charts
 INPUT int cScale = 2; // Mini Chart Scale
 INPUT int cDelay = 3; // Creation delay in s (so indicators don't foreground)
 datetime now = 0; // Defined at OnInit()
-bool cCreated = false; // Mini Charts are created
+bool cCreated = false; // Mini Charts are created correctly
 const color cColorSelected = clrRed; // Mini Chart color when highlighted (selected)
 const ENUM_LINE_STYLE cStyleSelected = STYLE_SOLID; // Mini Chart color when highlighted (selected)
 const int cPointSize = 1; // Move Point Size
@@ -65,6 +65,7 @@ const bool cBackground = false; // Mini Charts are printed in the background
 const bool cSelectable = false; // Mini Charts are selectable
 const bool cHidden = true; // Mini Charts are hidden in the Object List
 const int cZOrder = 0; // Mini Chart Z Order for mouse click
+int chartSizeX = 0; // Size of the Chart X Axis
 int chartSizeY = 0; // Size of the Chart Y Axis
 int cCount = 0; // Valid Mini Charts counter
 //---- Objects
@@ -104,14 +105,21 @@ int OnInit()
         return INIT_PARAMETERS_INCORRECT;
     }
 // Get Chart Attributes
+    long chartSizeXTemp;
+    if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
+        ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
+        return INIT_FAILED;
+    }
+    chartSizeX = (int) chartSizeXTemp;
     long chartSizeYTemp;
     if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeY)");
+        ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
         return INIT_FAILED;
     }
     chartSizeY = (int) chartSizeYTemp;
     if(!EventSetTimer(1)) {
         ErrorPrint("!EventSetTimer(1)");
+        return INIT_FAILED;
     }
     return INIT_SUCCEEDED;
 }
@@ -136,8 +144,30 @@ void OnTimer()
 // Issue https://www.mql5.com/en/forum/133175
 // Issue https://www.mql5.com/en/forum/133995
 // Issue https://www.mql5.com/en/forum/363531
+// Check if Chart size has changed
+    long chartSizeXTemp;
+    if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
+        ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
+        return;
+    }
+    if(chartSizeX != (int) chartSizeXTemp) {
+        cCreated = false;
+        chartSizeX = (int) chartSizeXTemp;
+    }
+    long chartSizeYTemp;
+    if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
+        ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
+        return;
+    }
+    if(chartSizeY != (int) chartSizeYTemp) {
+        cCreated = false;
+        chartSizeY = (int) chartSizeYTemp;
+    }
     if(cCreated == false && now < TimeLocal() - cDelay) {
-        cCreated = true;
+        ObjectDelete(ChartID(), c0Obj);
+        ObjectDelete(ChartID(), c1Obj);
+        ObjectDelete(ChartID(), c2Obj);
+        ObjectDelete(ChartID(), c3Obj);
 // Create Objects
         long thisY = cOffsetY; // Represents a Y axis position at printing (imagine a pointing arrow at the end of Y axis of the last object created)
         long thisYIncrement = (long) MathRound(((double) chartSizeY / (double) cCount) - ((double) cOffsetYBottom / (double) cCount) - ((double) cOffsetY / (double) cCount)); // Increment the "pointing" for every object created, rounded for precision
@@ -182,6 +212,7 @@ void OnTimer()
                              );
         }
         ChartRedraw(ChartID());
+        cCreated = true;
     }
     return;
 }
