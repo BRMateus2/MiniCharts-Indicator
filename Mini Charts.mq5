@@ -34,7 +34,7 @@ You should have received a copy of the GNU General Public License along with thi
 #define INPUT input
 #endif
 //---- Indicator Definitions
-const string iName = "Mini Charts";
+string iName = "MiniCharts";
 enum Corner {
     kCornerLeft, // Left Corner of Chart
     kCornerRight // Right Corner of Chart
@@ -56,6 +56,7 @@ INPUT bool cShowDate = true; // Show date in Mini Charts
 INPUT bool cShowPrice = true; // Show price in Mini Charts
 INPUT int cScale = 2; // Mini Chart Scale
 INPUT int cDelay = 3; // Creation delay in s (so indicators don't foreground)
+INPUT string magicID = "0"; // Magic Identification for multiples of the same indicator
 datetime now = 0; // Defined at OnInit()
 bool cCreated = false; // Mini Charts are created correctly
 const color cColorSelected = clrRed; // Mini Chart color when highlighted (selected)
@@ -69,10 +70,10 @@ int chartSizeX = 0; // Size of the Chart X Axis
 int chartSizeY = 0; // Size of the Chart Y Axis
 int cCount = 0; // Valid Mini Charts counter
 //---- Objects
-const string c0Obj = "MT_Chart0"; // Object Chart 0, used for naming
-const string c1Obj = "MT_Chart1"; // Object Chart 1, used for naming
-const string c2Obj = "MT_Chart2"; // Object Chart 2, used for naming
-const string c3Obj = "MT_Chart3"; // Object Chart 3, used for naming
+string c0Obj = "MT_Chart0"; // Object Chart 0, used for naming
+string c1Obj = "MT_Chart1"; // Object Chart 1, used for naming
+string c2Obj = "MT_Chart2"; // Object Chart 2, used for naming
+string c3Obj = "MT_Chart3"; // Object Chart 3, used for naming
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 // Constructor or initialization function
@@ -81,7 +82,12 @@ const string c3Obj = "MT_Chart3"; // Object Chart 3, used for naming
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    now = TimeLocal();
+    now = TimeGMT();
+    iName = iName + magicID;
+    c0Obj = c0Obj + magicID;
+    c1Obj = c1Obj + magicID;
+    c2Obj = c2Obj + magicID;
+    c3Obj = c3Obj + magicID;
     IndicatorSetString(INDICATOR_SHORTNAME, iName);
     ObjectDelete(ChartID(), c0Obj);
     ObjectDelete(ChartID(), c1Obj);
@@ -151,6 +157,7 @@ void OnTimer()
         return;
     }
     if(chartSizeX != (int) chartSizeXTemp) {
+        now = TimeGMT();
         cCreated = false;
         chartSizeX = (int) chartSizeXTemp;
     }
@@ -160,10 +167,12 @@ void OnTimer()
         return;
     }
     if(chartSizeY != (int) chartSizeYTemp) {
+        now = TimeGMT();
         cCreated = false;
         chartSizeY = (int) chartSizeYTemp;
     }
-    if(cCreated == false && now < TimeLocal() - cDelay) {
+    if(cCreated == false && now < TimeGMT() - cDelay) {
+        now = TimeGMT();
         ObjectDelete(ChartID(), c0Obj);
         ObjectDelete(ChartID(), c1Obj);
         ObjectDelete(ChartID(), c2Obj);
