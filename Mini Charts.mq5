@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License along with thi
 //| GNU General Public License version 2 - GPL-2.0                   |
 //| https://opensource.org/licenses/gpl-2.0.php                      |
 //+------------------------------------------------------------------+
-// https://github.com/BRMateus2/Simple-MQL5-Amplitude-Spread-and-Clock-Labels/
+// https://github.com/BRMateus2/MiniCharts-Indicator/
 //---- Main Properties
 #property copyright "2021, Mateus Matucuma Teixeira"
 #property link "https://github.com/BRMateus2/"
