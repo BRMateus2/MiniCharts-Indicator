@@ -22,7 +22,7 @@ You should have received a copy of the GNU General Public License along with thi
 #property link "https://github.com/BRMateus2/"
 #property description "This Indicator will create Mini Charts on the Chart Window, it also supports a Sub Window if you place it inside a Sub Window.\n"
 #property description "Be aware that it is normal for the Mini Charts to have a delay, it is made so the object creation tries to be on the foreground of the chart."
-#property version "1.00"
+#property version "1.01"
 #property strict
 #property indicator_chart_window
 #property indicator_buffers 0
@@ -55,7 +55,7 @@ INPUT int cSpacingY = 0; // Vertical gap between objects
 INPUT bool cShowDate = true; // Show date in Mini Charts
 INPUT bool cShowPrice = true; // Show price in Mini Charts
 INPUT int cScale = 2; // Mini Chart Scale
-INPUT int cDelay = 3; // Creation delay in s (so indicators don't foreground)
+INPUT int cDelay = 1; // Creation delay in s (so indicators don't foreground)
 INPUT string magicID = "0"; // Magic Identification for multiples of the same indicator
 datetime now = 0; // Defined at OnInit()
 bool cCreated = false; // Mini Charts are created correctly
@@ -114,13 +114,13 @@ int OnInit()
     long chartSizeXTemp;
     if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
         ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
-        return INIT_FAILED;
+        //return INIT_FAILED;
     }
     chartSizeX = (int) chartSizeXTemp;
     long chartSizeYTemp;
     if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
         ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
-        return INIT_FAILED;
+        //return INIT_FAILED;
     }
     chartSizeY = (int) chartSizeYTemp;
     if(!EventSetTimer(1)) {
@@ -138,6 +138,7 @@ void OnDeinit(const int reason)
     ObjectDelete(ChartID(), c1Obj);
     ObjectDelete(ChartID(), c2Obj);
     ObjectDelete(ChartID(), c3Obj);
+    EventKillTimer();
     return;
 }
 //+------------------------------------------------------------------+
@@ -150,6 +151,12 @@ void OnTimer()
 // Issue https://www.mql5.com/en/forum/133175
 // Issue https://www.mql5.com/en/forum/133995
 // Issue https://www.mql5.com/en/forum/363531
+// Issue: Sometimes IsStopped() is set, but the platform still calls for the OnTimer():
+//  ERROR: ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp) at "OnTimer:156", last internal error: 4022 (Mini Charts.mq5)
+//  This check attempts to fix that issue
+    if(IsStopped()) {
+        return;
+    }
 // Check if Chart size has changed
     long chartSizeXTemp;
     if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
