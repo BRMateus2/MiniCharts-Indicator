@@ -22,11 +22,14 @@ You should have received a copy of the GNU General Public License along with thi
 #property link "https://github.com/BRMateus2/MiniCharts-Indicator/"
 #property description "This Indicator will create Mini Charts on the Chart Window, it also supports a Sub-Window if you place it inside a Sub-Window.\n"
 #property description "Be aware that it is normal for the Mini Charts to have a delay, it is made so the object creation tries to be on the foreground of the chart."
-#property version "1.02"
-#property strict
+#property version "1.03"
+#property fpfast
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots 0
+//---- Imports
+//---- Include Libraries and Modules
+//#include <MT-Utilities.mqh>
 //---- Definitions
 #ifndef ErrorPrint
 #define ErrorPrint(Dp_error) Print("ERROR: " + Dp_error + " at \"" + __FUNCTION__ + ":" + IntegerToString(__LINE__) + "\", last internal error: " + IntegerToString(GetLastError()) + " (" + __FILE__ + ")"); ResetLastError(); DebugBreak(); // It should be noted that the GetLastError() function doesn't zero the _LastError variable. Usually the ResetLastError() function is called before calling a function, after which an error appearance is checked.
@@ -74,10 +77,10 @@ int chartSizeX = 0; // Size of the Chart X Axis
 int chartSizeY = 0; // Size of the Chart Y Axis
 int cCount = 0; // Valid Mini Charts counter
 //---- Objects
-string c0Obj = "MT_Chart0"; // Object Chart 0, used for naming
-string c1Obj = "MT_Chart1"; // Object Chart 1, used for naming
-string c2Obj = "MT_Chart2"; // Object Chart 2, used for naming
-string c3Obj = "MT_Chart3"; // Object Chart 3, used for naming
+string c0Obj = "MTMC" + magicID + "Chart0"; // Object Chart 0, used for naming
+string c1Obj = "MTMC" + magicID + "Chart1"; // Object Chart 1, used for naming
+string c2Obj = "MTMC" + magicID + "Chart2"; // Object Chart 2, used for naming
+string c3Obj = "MTMC" + magicID + "Chart3"; // Object Chart 3, used for naming
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 // Constructor or initialization function
@@ -87,17 +90,12 @@ string c3Obj = "MT_Chart3"; // Object Chart 3, used for naming
 int OnInit()
 {
     now = TimeGMT();
-    iName = iName + magicID;
-    c0Obj = c0Obj + magicID;
-    c1Obj = c1Obj + magicID;
-    c2Obj = c2Obj + magicID;
-    c3Obj = c3Obj + magicID;
     IndicatorSetString(INDICATOR_SHORTNAME, iName);
     ObjectDelete(ChartID(), c0Obj);
     ObjectDelete(ChartID(), c1Obj);
     ObjectDelete(ChartID(), c2Obj);
     ObjectDelete(ChartID(), c3Obj);
-// Count the number of valid Mini Charts
+    // Count the number of valid Mini Charts
     if(c0PeriodInp != PERIOD_CURRENT) {
         cCount = cCount + 1;
     }
@@ -114,19 +112,6 @@ int OnInit()
         ErrorPrint("All Mini Charts are set to PERIOD_CURRENT, there is nothing to show then, because they are all disabled");
         return INIT_PARAMETERS_INCORRECT;
     }
-// Get Chart Attributes
-    long chartSizeXTemp;
-    if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
-        //return INIT_FAILED;
-    }
-    chartSizeX = (int) chartSizeXTemp;
-    long chartSizeYTemp;
-    if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
-        //return INIT_FAILED;
-    }
-    chartSizeY = (int) chartSizeYTemp;
     if(!EventSetTimer(1)) {
         ErrorPrint("!EventSetTimer(1)");
         return INIT_FAILED;
@@ -138,18 +123,18 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-// Indicator Sleep() is not allowed, so we are trying to create the chart objects only after all chart indicator data are calculated, to account for the issue of other indicators foregrounding the priority objects
-// This is a unfortunate performance cost, to try to enforce those objects as foreground (not guaranteed)
-// Issue https://www.mql5.com/en/forum/133175
-// Issue https://www.mql5.com/en/forum/133995
-// Issue https://www.mql5.com/en/forum/363531
-// Issue: Sometimes IsStopped() is set, but the platform still calls for the OnTimer():
-//  ERROR: ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp) at "OnTimer:156", last internal error: 4022 (Mini Charts.mq5)
-//  This check attempts to fix that issue
+    // Indicator Sleep() is not allowed, so we are trying to create the chart objects only after all chart indicator data are calculated, to account for the issue of other indicators foregrounding the priority objects
+    // This is a unfortunate performance cost, to try to enforce those objects as foreground (not guaranteed)
+    // Issue https://www.mql5.com/en/forum/133175
+    // Issue https://www.mql5.com/en/forum/133995
+    // Issue https://www.mql5.com/en/forum/363531
+    // Issue: Sometimes IsStopped() is set, but the platform still calls for the OnTimer():
+    //  ERROR: ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp) at "OnTimer:156", last internal error: 4022 (Mini Charts.mq5)
+    //  This check attempts to fix that issue
     if(IsStopped()) {
         return;
     }
-// Check if Chart size has changed
+    // Check if Chart Size has changed
     long chartSizeXTemp;
     if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
         ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
@@ -170,16 +155,31 @@ void OnTimer()
         cCreated = false;
         chartSizeY = (int) chartSizeYTemp;
     }
+    // Check if Chart Scale has changed
+    static long chartScaleTempI;
+    static long chartScaleTemp = ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName));
+    if(chartScaleTemp < 0 || chartScaleTemp > 5) {
+        ErrorPrint("chartScaleTemp < 0 || chartScaleTemp > 5 from ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName))");
+    }
+    if(!ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName), chartScaleTempI)) {
+        ErrorPrint("ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName), chartScaleTempI)");
+        return;
+    }
+    if(chartScaleTemp != chartScaleTempI) {
+        now = TimeGMT();
+        cCreated = false;
+        chartScaleTemp = chartScaleTempI;
+    }
     if(cCreated == false && now < TimeGMT() - cDelay) {
         now = TimeGMT();
         ObjectDelete(ChartID(), c0Obj);
         ObjectDelete(ChartID(), c1Obj);
         ObjectDelete(ChartID(), c2Obj);
         ObjectDelete(ChartID(), c3Obj);
-// Create Objects
-        long thisY = cOffsetY; // Represents a Y axis position at printing (imagine a pointing arrow at the end of Y axis of the last object created)
+        // Create Objects
+        long thisY = cOffsetY; // Represents a Y Axis position at printing (imagine a pointing arrow at the end of Y Axis of the last object created)
         long thisYIncrement = (long) MathRound(((double) chartSizeY / (double) cCount) - ((double) cOffsetYBottom / (double) cCount) - ((double) cOffsetY / (double) cCount)); // Increment the "pointing" for every object created, rounded for precision
-        long thisXOffset = (cCorner == kCornerLeft ? cOffsetX : cOffsetX + cSizeX); // MQL5 X axis offset on the left corner works by adding the object position, while on the right corner works by subtracting the object position (The Cartesian Coordinates system with rotation)
+        long thisXOffset = (cCorner == kCornerLeft ? cOffsetX : cOffsetX + cSizeX); // MQL5 X Axis offset on the left corner works by adding the object position, while on the right corner works by subtracting the object position (The Cartesian Coordinates system with rotation)
         if(c0PeriodInp != PERIOD_CURRENT) {
             ObjectChartCreate(Symbol(), ChartID(), ChartWindowFind(ChartID(), iName), c0Obj, c0PeriodInp,
                               thisXOffset,
@@ -227,11 +227,16 @@ void OnTimer()
 //+------------------------------------------------------------------+
 // Calculation function
 //+------------------------------------------------------------------+
-int OnCalculate(
-    const int rates_total, // price[] array size
-    const int prev_calculated, // number of handled bars at the previous call
-    const int begin, // index number in the price[] array meaningful data starts from
-    const double& price[]) // array of values for calculation
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime& time[],
+                const double& open[],
+                const double& high[],
+                const double& low[],
+                const double& close[],
+                const long& tick_volume[],
+                const long& volume[],
+                const int& spread[])
 {
     return rates_total; // There are no calculations to be executed
 }
@@ -258,77 +263,6 @@ ENUM_BASE_CORNER EnumToEnumBaseCorner(Corner e)
         ErrorPrint("undefined");
         return CORNER_LEFT_UPPER;
     }
-}
-//+------------------------------------------------------------------+
-// PlotIndexConstruct, substitute for common call
-// Fixed Issue: the function solves a issue with the platform #property, where every single time the .ex5 file is updated or recompiled, all of the Plot (color, etc) user settings are reset - this function is not made for Levels.
-//+------------------------------------------------------------------+
-bool PlotIndexConstruct(const int plotIndex,
-                        const string plotLabel,
-                        const color plotColor,
-                        double& plotBuffer[], // Cannot set this to const, because SetIndexBuffer() parameter is not const
-                        const ENUM_INDEXBUFFER_TYPE plotIndexType = INDICATOR_DATA,
-                        const ENUM_DRAW_TYPE plotDraw = DRAW_LINE,
-                        const int plotShift = 0,
-                        const ENUM_LINE_STYLE plotStyle = STYLE_SOLID,
-                        const int plotWidth = 1,
-                        const int plotBegin = 0,
-                        const bool plotShowOnDatawindow = true,
-                        const double plotEmptyValue = 0.0)
-{
-    bool success = true;
-    if(!SetIndexBuffer(plotIndex, plotBuffer, plotIndexType)) {
-        ErrorPrint("!SetIndexBuffer(plotIndex, plotBuffer, plotIndexType)");
-        success = false;
-    }
-    if(!PlotIndexSetString(plotIndex, PLOT_LABEL, plotLabel)) {
-        ErrorPrint("!PlotIndexSetString(plotIndex, PLOT_LABEL, plotLabel)");
-        success = false;
-    }
-    if(!PlotIndexSetInteger(plotIndex, PLOT_LINE_COLOR, plotColor)) {
-        ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_LINE_COLOR, plotColor)");
-        success = false;
-    }
-    if(plotDraw != DRAW_ARROW) {
-        if(!PlotIndexSetInteger(plotIndex, PLOT_DRAW_TYPE, plotDraw)) {
-            ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_DRAW_TYPE, plotDraw)");
-            success = false;
-        }
-        if(!PlotIndexSetInteger(plotIndex, PLOT_SHIFT, plotShift)) {
-            ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_SHIFT, plotShift)");
-            success = false;
-        }
-    } else {
-        if(!PlotIndexSetInteger(plotIndex, PLOT_DRAW_TYPE, plotDraw)) {
-            ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_DRAW_TYPE, plotDraw)");
-            success = false;
-        }
-        if(!PlotIndexSetInteger(plotIndex, PLOT_ARROW_SHIFT, plotShift)) {
-            ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_ARROW_SHIFT, plotShift)");
-            success = false;
-        }
-    }
-    if(!PlotIndexSetInteger(plotIndex, PLOT_LINE_STYLE, plotStyle)) {
-        ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_LINE_STYLE, plotStyle)");
-        success = false;
-    }
-    if(!PlotIndexSetInteger(plotIndex, PLOT_LINE_WIDTH, plotWidth)) {
-        ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_LINE_WIDTH, plotWidth)");
-        success = false;
-    }
-    if(!PlotIndexSetInteger(plotIndex, PLOT_DRAW_BEGIN, plotBegin)) {
-        ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_DRAW_BEGIN, plotBegin)");
-        success = false;
-    }
-    if(!PlotIndexSetInteger(plotIndex, PLOT_SHOW_DATA, plotShowOnDatawindow)) {
-        ErrorPrint("!PlotIndexSetInteger(plotIndex, PLOT_SHOW_DATA, plotShowOnDatawindow)");
-        success = false;
-    }
-    if(!PlotIndexSetDouble(plotIndex, PLOT_EMPTY_VALUE, plotEmptyValue)) {
-        ErrorPrint("!PlotIndexSetDouble(plotIndex, PLOT_EMPTY_VALUE, plotEmptyValue)");
-        success = false;
-    }
-    return success;
 }
 //+------------------------------------------------------------------+
 //| Creating Chart object
@@ -415,7 +349,7 @@ bool ObjectChartCreate(const string symbol, // Symbol
     return true;
 }
 //+------------------------------------------------------------------+
-//| Header Guard #endif
+// Header Guard #endif
 //+------------------------------------------------------------------+
 #endif
 //+------------------------------------------------------------------+
