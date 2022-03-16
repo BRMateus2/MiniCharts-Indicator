@@ -22,8 +22,8 @@ You should have received a copy of the GNU General Public License along with thi
 #property link "https://github.com/BRMateus2/MiniCharts-Indicator/"
 #property description "This Indicator will create Mini Charts on the Chart Window, it also supports a Sub-Window if you place it inside a Sub-Window.\n"
 #property description "Be aware that it is normal for the Mini Charts to have a delay, it is made so the object creation tries to be on the foreground of the chart."
-#property version "1.03"
-#property fpfast
+#property version "1.04"
+//#property fpfast
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots 0
@@ -41,41 +41,48 @@ You should have received a copy of the GNU General Public License along with thi
 //---- Input Parameters
 //---- "Basic Settings"
 input group "Basic Settings"
-string iName = "MiniCharts";
 enum Corner {
     kCornerLeft, // Left Corner of Chart
     kCornerRight // Right Corner of Chart
 };
 //+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-INPUT ENUM_TIMEFRAMES c0PeriodInp = PERIOD_D1; // Mini Chart 0 Period (current = disabled)
-INPUT ENUM_TIMEFRAMES c1PeriodInp = PERIOD_M1; // Mini Chart 1 Period (current = disabled)
-INPUT ENUM_TIMEFRAMES c2PeriodInp = PERIOD_CURRENT; // Mini Chart 2 Period (current = disabled)
-INPUT ENUM_TIMEFRAMES c3PeriodInp = PERIOD_CURRENT; // Mini Chart 3 Period (current = disabled)
+INPUT ENUM_TIMEFRAMES c0PeriodInp = PERIOD_MN1; // Mini Chart 0 Period (current = disabled)
+INPUT int c0Scale = 3; // Mini Chart 0 Scale
+INPUT ENUM_TIMEFRAMES c1PeriodInp = PERIOD_W1; // Mini Chart 1 Period (current = disabled)
+INPUT int c1Scale = 2; // Mini Chart 1 Scale
+INPUT ENUM_TIMEFRAMES c2PeriodInp = PERIOD_D1; // Mini Chart 2 Period (current = disabled)
+INPUT int c2Scale = 2; // Mini Chart 2 Scale
+INPUT ENUM_TIMEFRAMES c3PeriodInp = PERIOD_M1; // Mini Chart 3 Period (current = disabled)
+INPUT int c3Scale = 0; // Mini Chart 3 Scale
 INPUT Corner cCorner = kCornerLeft; // Mini Chart Corner
 INPUT int cOffsetX = 0; // X Distance or Horizontal Position Offset
-INPUT int cOffsetY = 20; // Y Distance or Vertical Position Offset
-INPUT int cOffsetYBottom = 20; // Y Space on the Bottom
-INPUT int cSizeX = 270; // X (Horizontal) Size in Pixels
+INPUT int cOffsetY = 18; // Y Distance or Vertical Position Offset
+INPUT int cOffsetYBottom = 18; // Y Space on the Bottom
+INPUT int cSizeX = 250; // X (Horizontal) Size in Pixels
 INPUT int cSpacingY = 0; // Vertical gap between objects
 INPUT bool cShowDate = true; // Show date in Mini Charts
 INPUT bool cShowPrice = true; // Show price in Mini Charts
-INPUT int cScale = 2; // Mini Chart Scale
 INPUT int cDelay = 1; // Creation delay in s (so indicators don't foreground)
 INPUT string magicID = "0"; // Magic Identification for multiples of the same indicator
-datetime now = 0; // Defined at OnInit()
-bool cCreated = false; // Mini Charts are created correctly
+datetime now = {}; // Defined at OnInit()
 const color cColorSelected = clrRed; // Mini Chart color when highlighted (selected)
 const ENUM_LINE_STYLE cStyleSelected = STYLE_SOLID; // Mini Chart color when highlighted (selected)
 const int cPointSize = 1; // Move Point Size
 const bool cBackground = false; // Mini Charts are printed in the background
 const bool cSelectable = false; // Mini Charts are selectable
 const bool cHidden = true; // Mini Charts are hidden in the Object List
-const int cZOrder = 0; // Mini Chart Z Order for mouse click
-int chartSizeX = 0; // Size of the Chart X Axis
-int chartSizeY = 0; // Size of the Chart Y Axis
-int cCount = 0; // Valid Mini Charts counter
+const int cZOrder = {}; // Mini Chart Z Order for mouse click
+int chartSizeX = {}; // Size of the Chart X Axis
+int chartSizeY = {}; // Size of the Chart Y Axis
+int cCount = {}; // Valid Mini Charts counter
+enum CState {
+    kCStateDelete, // Should Delete the Chart Objects
+    kCStateCreate, // Should Create the Chart Objects
+    kCStateCheck // Should Check the Chart Objects
+};
+CState cState = kCStateDelete; // Chart Objects State
+//---- Indicator Name
+string iName = "MTMC" + magicID;
 //---- Objects
 string c0Obj = "MTMC" + magicID + "Chart0"; // Object Chart 0, used for naming
 string c1Obj = "MTMC" + magicID + "Chart1"; // Object Chart 1, used for naming
@@ -91,11 +98,7 @@ int OnInit()
 {
     now = TimeGMT();
     IndicatorSetString(INDICATOR_SHORTNAME, iName);
-    ObjectDelete(ChartID(), c0Obj);
-    ObjectDelete(ChartID(), c1Obj);
-    ObjectDelete(ChartID(), c2Obj);
-    ObjectDelete(ChartID(), c3Obj);
-    // Count the number of valid Mini Charts
+// Count the number of valid Mini Charts
     if(c0PeriodInp != PERIOD_CURRENT) {
         cCount = cCount + 1;
     }
@@ -112,8 +115,8 @@ int OnInit()
         ErrorPrint("All Mini Charts are set to PERIOD_CURRENT, there is nothing to show then, because they are all disabled");
         return INIT_PARAMETERS_INCORRECT;
     }
-    if(!EventSetTimer(1)) {
-        ErrorPrint("!EventSetTimer(1)");
+    if(!EventSetTimer(cDelay)) {
+        ErrorPrint("!EventSetTimer(cDelay)");
         return INIT_FAILED;
     }
     return INIT_SUCCEEDED;
@@ -123,59 +126,71 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-    // Indicator Sleep() is not allowed, so we are trying to create the chart objects only after all chart indicator data are calculated, to account for the issue of other indicators foregrounding the priority objects
-    // This is a unfortunate performance cost, to try to enforce those objects as foreground (not guaranteed)
-    // Issue https://www.mql5.com/en/forum/133175
-    // Issue https://www.mql5.com/en/forum/133995
-    // Issue https://www.mql5.com/en/forum/363531
-    // Issue: Sometimes IsStopped() is set, but the platform still calls for the OnTimer():
-    //  ERROR: ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp) at "OnTimer:156", last internal error: 4022 (Mini Charts.mq5)
-    //  This check attempts to fix that issue
-    if(IsStopped()) {
+// Indicator Sleep() is not allowed, so we are trying to create the chart objects only after all chart indicator data are calculated, to account for the issue of other indicators foregrounding the priority objects
+// This is a unfortunate performance cost, to try to enforce those objects as foreground (not guaranteed)
+// Issue https://www.mql5.com/en/forum/133175
+// Issue https://www.mql5.com/en/forum/133995
+// Issue https://www.mql5.com/en/forum/363531
+// Issue: Sometimes IsStopped() is set, but the platform still calls for the OnTimer():
+//  ERROR: ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp) at "OnTimer:156", last internal error: 4022 (Mini Charts.mq5)
+//  Fix: this check attempts to fix that issue
+    if(IsStopped() || (now > (TimeGMT() - cDelay))) {
         return;
     }
-    // Check if Chart Size has changed
-    long chartSizeXTemp;
-    if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
+    if(cState == kCStateCheck) {
+        // Check if Chart Size has changed
+        long chartSizeXTemp = {};
+        if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
+            ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
+            return;
+        }
+        if(chartSizeX != (int) chartSizeXTemp) {
+            cState = kCStateDelete;
+            chartSizeX = (int) chartSizeXTemp;
+        }
+        long chartSizeYTemp = {};
+        if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
+            ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
+            return;
+        }
+        if(chartSizeY != (int) chartSizeYTemp) {
+            cState = kCStateDelete;
+            chartSizeY = (int) chartSizeYTemp;
+        }
         return;
     }
-    if(chartSizeX != (int) chartSizeXTemp) {
-        now = TimeGMT();
-        cCreated = false;
-        chartSizeX = (int) chartSizeXTemp;
-    }
-    long chartSizeYTemp;
-    if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
-        return;
-    }
-    if(chartSizeY != (int) chartSizeYTemp) {
-        now = TimeGMT();
-        cCreated = false;
-        chartSizeY = (int) chartSizeYTemp;
-    }
-    // Check if Chart Scale has changed
-    static long chartScaleTempI;
-    static long chartScaleTemp = ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName));
-    if(chartScaleTemp < 0 || chartScaleTemp > 5) {
-        ErrorPrint("chartScaleTemp < 0 || chartScaleTemp > 5 from ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName))");
-    }
-    if(!ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName), chartScaleTempI)) {
-        ErrorPrint("ChartGetInteger(ChartID(), CHART_SCALE, ChartWindowFind(ChartID(), iName), chartScaleTempI)");
-        return;
-    }
-    if(chartScaleTemp != chartScaleTempI) {
-        now = TimeGMT();
-        cCreated = false;
-        chartScaleTemp = chartScaleTempI;
-    }
-    if(cCreated == false && now < TimeGMT() - cDelay) {
-        now = TimeGMT();
+    if(cState == kCStateDelete) {
         ObjectDelete(ChartID(), c0Obj);
         ObjectDelete(ChartID(), c1Obj);
         ObjectDelete(ChartID(), c2Obj);
         ObjectDelete(ChartID(), c3Obj);
+        cState = kCStateCreate;
+        now = TimeGMT();
+        return;
+    } else if(cState == kCStateCreate) {
+        if((chartSizeX == 0) || (chartSizeY == 0)) {
+            // Detect Chart Size
+            long chartSizeXTemp = {};
+            if(!ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)) {
+                ErrorPrint("ChartGetInteger(ChartID(), CHART_WIDTH_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeXTemp)");
+                return;
+            }
+            if(chartSizeX != (int) chartSizeXTemp) {
+                chartSizeX = (int) chartSizeXTemp;
+            } else {
+                return;
+            }
+            long chartSizeYTemp = {};
+            if(!ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)) {
+                ErrorPrint("ChartGetInteger(ChartID(), CHART_HEIGHT_IN_PIXELS, ChartWindowFind(ChartID(), iName), chartSizeYTemp)");
+                return;
+            }
+            if(chartSizeY != (int) chartSizeYTemp) {
+                chartSizeY = (int) chartSizeYTemp;
+            } else {
+                return;
+            }
+        }
         // Create Objects
         long thisY = cOffsetY; // Represents a Y Axis position at printing (imagine a pointing arrow at the end of Y Axis of the last object created)
         long thisYIncrement = (long) MathRound(((double) chartSizeY / (double) cCount) - ((double) cOffsetYBottom / (double) cCount) - ((double) cOffsetY / (double) cCount)); // Increment the "pointing" for every object created, rounded for precision
@@ -186,7 +201,7 @@ void OnTimer()
                               thisY,
                               cSizeX,
                               thisYIncrement,
-                              EnumToEnumBaseCorner(cCorner), cScale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
+                              EnumToEnumBaseCorner(cCorner), c0Scale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
                              );
             thisY = thisY + thisYIncrement;
         }
@@ -196,7 +211,7 @@ void OnTimer()
                               thisY,
                               cSizeX,
                               thisYIncrement,
-                              EnumToEnumBaseCorner(cCorner), cScale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
+                              EnumToEnumBaseCorner(cCorner), c1Scale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
                              );
             thisY = thisY + thisYIncrement;
         }
@@ -206,7 +221,7 @@ void OnTimer()
                               thisY,
                               cSizeX,
                               thisYIncrement,
-                              EnumToEnumBaseCorner(cCorner), cScale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
+                              EnumToEnumBaseCorner(cCorner), c2Scale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
                              );
             thisY = thisY + thisYIncrement;
         }
@@ -216,11 +231,13 @@ void OnTimer()
                               thisY,
                               cSizeX,
                               thisYIncrement,
-                              EnumToEnumBaseCorner(cCorner), cScale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
+                              EnumToEnumBaseCorner(cCorner), c3Scale, cShowDate, cShowPrice, cColorSelected, cStyleSelected, cPointSize, cBackground, cSelectable, cHidden, cZOrder
                              );
         }
         ChartRedraw(ChartID());
-        cCreated = true;
+        cState = kCStateCheck;
+        now = TimeGMT();
+        return;
     }
     return;
 }
